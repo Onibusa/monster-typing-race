@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Monster Typing Race</title>
+<style>
+  /* ===== Monster Typing Race — fully self-contained, works offline (file://) ===== */
+  :root{
+    --bg1:#3a1c71; --bg2:#5f2c82; --bg3:#2a6f97;
+    --panel:#ffffff; --ink:#2b2d42; --muted:#5b616e;
+    --accent:#ff7b54; --accent2:#ffd166; --good:#2fbf71; --bad:#ef476f;
+    --track:#cdeffd; --track-line:#ffffff;
+    --font: 'Comic Sans MS','Comic Neue','Trebuchet MS','Verdana',system-ui,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; }
+  body{
+    font-family:var(--font);
+    color:var(--ink);
+    background:linear-gradient(135deg,var(--bg1),var(--bg2) 45%,var(--bg3));
+    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    padding:16px;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .app{
+    width:min(960px,100%);
+    background:rgba(255,255,255,0.08);
+    border-radius:24px;
+    padding:18px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.35);
+  }
+  .screen{ display:none; }
+  .screen.active{ display:block; animation:fade .25s ease; }
+  @keyframes fade{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
+
+  .panel{ background:var(--panel); border-radius:20px; padding:24px; }
+
+  h1.logo{
+    margin:0 0 4px; text-align:center; font-size:clamp(30px,6vw,52px);
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.25), 0 0 18px rgba(255,209,102,.6);
+    letter-spacing:.5px;
+  }
+  .logo .race{ color:var(--accent2); }
+  .tagline{ text-align:center; color:#ffe; opacity:.9; margin:0 0 16px; font-size:15px; }
+
+  .btn{
+    font-family:inherit; cursor:pointer; border:none; border-radius:14px;
+    padding:14px 20px; font-size:18px; font-weight:bold; color:#fff;
+    background:var(--accent); box-shadow:0 5px 0 #c75a39; transition:transform .06s, box-shadow .06s;
+    margin:6px;
+  }
+  .btn:hover{ filter:brightness(1.05); }
+  .btn:active{ transform:translateY(4px); box-shadow:0 1px 0 #c75a39; }
+  .btn.big{ font-size:24px; padding:18px 34px; }
+  .btn.alt{ background:#5b8def; box-shadow:0 5px 0 #3f64ad; }
+  .btn.ghost{ background:#eceefb; color:#3a3f63; box-shadow:0 5px 0 #c8cbe6; }
+  .btn.green{ background:var(--good); box-shadow:0 5px 0 #1f8f53; }
+  .btn:focus-visible{ outline:4px solid #ffd166; outline-offset:3px; }
+
+  .row{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; }
+  .center{ text-align:center; }
+
+  /* Menu */
+  .namebox{ display:flex; gap:10px; align-items:center; justify-content:center; margin:10px 0 6px; flex-wrap:wrap; }
+  .namebox label{ font-weight:bold; color:var(--muted); }
+  .namebox input{
+    font-family:inherit; font-size:18px; padding:10px 14px; border-radius:12px;
+    border:3px solid #d7d9f0; width:200px; text-align:center;
+  }
+  .namebox input:focus{ outline:none; border-color:var(--accent); }
+  .picker{ display:flex; align-items:center; justify-content:center; gap:14px; margin:8px 0 18px; }
+  .picker .mon{ width:90px; height:90px; }
+  .diff-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:10px; }
+  .diff-card{
+    border:none; cursor:pointer; font-family:inherit; text-align:left;
+    border-radius:18px; padding:16px; color:#fff; box-shadow:0 6px 0 rgba(0,0,0,.18);
+    transition:transform .08s;
+  }
+  .diff-card:active{ transform:translateY(4px); }
+  .diff-card:focus-visible{ outline:4px solid #2b2d42; outline-offset:2px; }
+  .diff-card h3{ margin:0 0 6px; font-size:22px; }
+  .diff-card p{ margin:0; font-size:14px; line-height:1.35; }
+  .d-tutorial{ background:linear-gradient(135deg,#5a2ec0,#6a3bd0); }
+  .d-easy{ background:linear-gradient(135deg,#138040,#18804a); }
+  .d-medium{ background:linear-gradient(135deg,#b4480f,#bf5230); }
+  .d-hard{ background:linear-gradient(135deg,#c61f54,#b02f72); }
+  .diff-card .ic{ font-size:26px; }
+
+  /* Race */
+  .topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+  .pill{ background:#eef1ff; color:#3a3f63; border-radius:999px; padding:6px 14px; font-weight:bold; font-size:14px; }
+  .track-wrap{ position:relative; background:linear-gradient(#bfe9ff,#9fdcff);
+    border-radius:18px; padding:10px 0; overflow:hidden; border:4px solid #fff; }
+  .lane{ position:relative; height:74px; margin:4px 8px; border-bottom:3px dashed rgba(255,255,255,.8); }
+  .lane:last-child{ border-bottom:none; }
+  .finish{
+    position:absolute; top:0; bottom:0; right:6%; width:14px;
+    background-image:
+      linear-gradient(45deg,#222 25%,transparent 25%),
+      linear-gradient(-45deg,#222 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#222 75%),
+      linear-gradient(-45deg,transparent 75%,#222 75%);
+    background-size:14px 14px; background-position:0 0,0 7px,7px -7px,-7px 0; background-color:#fff;
+    border-radius:3px; z-index:1;
+  }
+  .startline{ position:absolute; top:0; bottom:0; left:1.5%; width:5px; background:rgba(255,255,255,.85); border-radius:3px; }
+  .monster{ position:absolute; bottom:4px; width:60px; height:60px; left:1.5%; transition:left .18s linear; z-index:2; }
+  .monster .label{ position:absolute; top:-16px; left:50%; transform:translateX(-50%);
+    font-size:11px; font-weight:bold; color:#3a3f63; background:rgba(255,255,255,.85);
+    padding:1px 6px; border-radius:8px; white-space:nowrap; }
+  .monster.run svg{ animation:bob .42s infinite ease-in-out; transform-origin:50% 90%; }
+  @keyframes bob{ 0%,100%{ transform:translateY(0) rotate(-3deg);} 50%{ transform:translateY(-7px) rotate(3deg);} }
+  .monster.cheer svg{ animation:cheer .5s infinite ease-in-out; }
+  @keyframes cheer{ 0%,100%{ transform:translateY(0) rotate(0);} 25%{transform:translateY(-12px) rotate(-8deg);} 75%{transform:translateY(-12px) rotate(8deg);} }
+
+  /* Word display */
+  .wordstage{ text-align:center; margin:16px 0 6px; }
+  .word{ font-size:clamp(34px,7vw,64px); font-weight:bold; letter-spacing:3px; }
+  .word .done{ color:var(--good); }
+  .word .cur{ color:var(--ink); background:var(--accent2); border-radius:8px; padding:0 4px; box-shadow:0 0 0 3px var(--accent2); }
+  .word .todo{ color:#5b6275; }
+  .word.shake{ animation:shake .25s; }
+  @keyframes shake{ 0%,100%{transform:translateX(0);} 20%{transform:translateX(-8px);} 60%{transform:translateX(8px);} }
+  .hint{ margin-top:8px; font-size:15px; color:var(--muted); min-height:22px; }
+  .hint .dot{ display:inline-block; width:13px; height:13px; border-radius:50%; vertical-align:middle; margin-right:5px; }
+  .wordcount{ color:var(--muted); font-size:14px; margin-top:4px; }
+
+  /* Countdown overlay */
+  .overlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(20,10,40,.45); border-radius:18px; z-index:5; }
+  .count{ font-size:90px; font-weight:bold; color:#fff; text-shadow:0 4px 0 rgba(0,0,0,.3); animation:pop .6s; }
+  @keyframes pop{ from{transform:scale(.3); opacity:0;} to{transform:scale(1); opacity:1;} }
+
+  /* Tutorial */
+  .tut-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .tut-blurb{ color:var(--muted); font-size:15px; margin:6px 0 12px; line-height:1.4; }
+  .keyboard{ display:flex; flex-direction:column; gap:6px; align-items:center; margin:14px 0; }
+  .krow{ display:flex; gap:6px; justify-content:center; }
+  .key{ width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-weight:bold; font-size:16px; color:#2b2d42; box-shadow:0 3px 0 rgba(0,0,0,.18);
+    text-transform:uppercase; user-select:none; }
+  .key.space{ width:230px; }
+  .key.bump{ position:relative; }
+  .key.bump::after{ content:""; position:absolute; bottom:5px; left:50%; transform:translateX(-50%);
+    width:12px; height:3px; border-radius:2px; background:rgba(0,0,0,.45); }
+  .key.target{ outline:4px solid #2b2d42; transform:translateY(-4px); animation:keypulse .8s infinite; }
+  @keyframes keypulse{ 0%,100%{ box-shadow:0 3px 0 rgba(0,0,0,.18);} 50%{ box-shadow:0 0 16px 4px #ffd166;} }
+  .progress{ height:14px; background:#e9ebfb; border-radius:999px; overflow:hidden; margin:10px 0; }
+  .progress > div{ height:100%; width:0; background:linear-gradient(90deg,#2fbf71,#37d995); transition:width .2s; }
+  .stars{ font-size:40px; letter-spacing:6px; }
+
+  /* Results */
+  .result-emoji{ font-size:70px; }
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin:16px 0; }
+  .stat{ background:#f3f4ff; border-radius:16px; padding:14px; }
+  .stat .v{ font-size:30px; font-weight:bold; color:#c2410c; }
+  .stat .k{ font-size:13px; color:var(--muted); }
+  .toggle{ background:none; border:none; cursor:pointer; font-size:22px; }
+  .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .footer-note{ text-align:center; color:#fff7e0; font-size:14px; margin-top:12px; }
+  .kb-caption{ text-align:center; color:var(--muted); font-size:13.5px; margin:0 0 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= MENU ================= -->
+  <section id="menu" class="screen active">
+    <h1 class="logo">🐲 Monster Typing <span class="race">Race</span> 🏁</h1>
+    <p class="tagline">Type the words to make your monster run to the finish line!</p>
+    <div class="panel">
+      <div class="namebox">
+        <label for="nameInput">Your name:</label>
+        <input id="nameInput" maxlength="12" placeholder="Type your name" />
+      </div>
+      <div class="picker">
+        <div id="menuMonster" class="mon" aria-hidden="true"></div>
+        <button class="btn ghost" id="rerollBtn">🎲 New monster</button>
+      </div>
+      <p class="center" style="margin:6px 0 2px; font-weight:bold; color:#3a3f63;">Pick how you want to play:</p>
+      <div class="diff-grid" id="diffGrid">
+        <button class="diff-card d-tutorial" data-mode="tutorial">
+          <div class="ic">🖐️</div><h3>Tutorial</h3>
+          <p>Learn where your fingers go. Start here if you're new!</p>
+        </button>
+        <button class="diff-card d-easy" data-mode="easy">
+          <div class="ic">🐣</div><h3>Easy</h3>
+          <p>Short words and a slow monster. Great for beginners.</p>
+        </button>
+        <button class="diff-card d-medium" data-mode="medium">
+          <div class="ic">⭐</div><h3>Medium</h3>
+          <p>Everyday words and two racers to beat.</p>
+        </button>
+        <button class="diff-card d-hard" data-mode="hard">
+          <div class="ic">🔥</div><h3>Hard</h3>
+          <p>Long words, capitals, and three speedy monsters!</p>
+        </button>
+      </div>
+    </div>
+    <p class="footer-note">Tip: rest your fingers on the home row — F and J have little bumps to find without looking.</p>
+  </section>
+
+  <!-- ================= TUTORIAL ================= -->
+  <section id="tutorial" class="screen">
+    <div class="panel">
+      <div class="tut-head">
+        <h2 id="tutTitle" style="margin:0; color:var(--ink);">Home Row</h2>
+        <div class="row" style="gap:6px;">
+          <span class="pill" id="tutLessonPill">Lesson 1 / 4</span>
+          <button class="btn ghost" id="tutQuit">⟵ Menu</button>
+        </div>
+      </div>
+      <p class="tut-blurb" id="tutBlurb"></p>
+      <div class="progress"><div id="tutProgress"></div></div>
+
+      <div class="wordstage">
+        <div class="word" id="tutWord"></div>
+        <div class="hint" id="tutHint"></div>
+      </div>
+
+      <p class="kb-caption" id="tutKbCaption">⌨️ Watch the glowing key, then press it on your own keyboard.</p>
+      <div class="keyboard" id="keyboard" aria-hidden="true"></div>
+
+      <div class="center" id="tutDone" style="display:none;">
+        <div class="stars" id="tutStars">⭐⭐⭐</div>
+        <h2 style="color:var(--good); margin:6px;">Lesson complete!</h2>
+        <p id="tutScore" style="color:var(--muted);"></p>
+        <div class="row">
+          <button class="btn green" id="tutNext">Next lesson ➜</button>
+          <button class="btn alt" id="tutReplay">↻ Try again</button>
+          <button class="btn ghost" id="tutMenu">Menu</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RACE ================= -->
+  <section id="race" class="screen">
+    <div class="topbar">
+      <span class="pill" id="raceDiff">Easy</span>
+      <span class="pill" id="raceWords">Word 1 / 10</span>
+      <div>
+        <button class="toggle" id="soundBtn" title="Sound on/off" aria-label="Toggle sound">🔊</button>
+        <button class="btn ghost" id="raceQuit">⟵ Quit</button>
+      </div>
+    </div>
+    <div class="track-wrap">
+      <div class="startline"></div>
+      <div class="finish"></div>
+      <div id="lanes"></div>
+      <div class="overlay" id="countdown" style="display:none;"><div class="count" id="countNum">3</div></div>
+    </div>
+    <div class="wordstage">
+      <div class="word" id="word"></div>
+      <div class="hint" id="raceHint"></div>
+      <div class="wordcount" id="raceProgressTxt"></div>
+    </div>
+  </section>
+
+  <!-- ================= RESULTS ================= -->
+  <section id="results" class="screen">
+    <div class="panel center">
+      <div class="result-emoji" id="resEmoji">🏆</div>
+      <h1 id="resTitle" style="margin:4px; color:var(--ink);">You win!</h1>
+      <p id="resSub" style="color:var(--muted); margin:0 0 6px;"></p>
+      <div class="stat-grid">
+        <div class="stat"><div class="v" id="resPlace">1st</div><div class="k">Place</div></div>
+        <div class="stat"><div class="v" id="resWpm">0</div><div class="k">Words / min</div></div>
+        <div class="stat"><div class="v" id="resAcc">100%</div><div class="k">Accuracy</div></div>
+        <div class="stat"><div class="v" id="resTime">0s</div><div class="k">Time</div></div>
+      </div>
+      <p id="resBest" style="color:var(--good); font-weight:bold; min-height:20px;"></p>
+      <div class="row">
+        <button class="btn green big" id="againBtn">↻ Play again</button>
+        <button class="btn alt" id="changeBtn">Change level</button>
+        <button class="btn ghost" id="menuBtn">Menu</button>
+      </div>
+      <p class="center" style="color:var(--muted); font-size:13px; margin-top:10px;">Press <b>Enter</b> to play again</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   Monster Typing Race
+   One file, no dependencies, runs offline by double-clicking.
+   ============================================================ */
+
+/* ---------- tiny helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const screens = ['menu','tutorial','race','results'];
+function showScreen(name){
+  screens.forEach(s => $(s).classList.toggle('active', s === name));
+  state.screen = name;
+}
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+/* deterministic-ish counter for monster variety (no Math.random reliance needed,
+   but we DO use Math.random for fun opponent speed jitter — fine in a browser game) */
+let monsterCounter = 0;
+
+/* ---------- monster art (inline SVG) ---------- */
+const MONSTER_COLORS = ['#ff8fab','#ffb703','#8ecae6','#90be6d','#b5179e','#4cc9f0','#f9844a','#9b5de5','#00bbf9','#06d6a0','#ef476f','#ffd166'];
+function shade(hex, amt){
+  let c = hex.replace('#','');
+  if(c.length===3) c = c.split('').map(x=>x+x).join('');
+  let r = clamp(parseInt(c.slice(0,2),16)+amt,0,255);
+  let g = clamp(parseInt(c.slice(2,4),16)+amt,0,255);
+  let b = clamp(parseInt(c.slice(4,6),16)+amt,0,255);
+  return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function monsterSVG(color, variant){
+  variant = ((variant % 3) + 3) % 3;
+  const dk = shade(color, -45);
+  let top = '';
+  if(variant===0){ // horns
+    top = `<path d="M30 26 L24 6 L41 22 Z" fill="${dk}"/><path d="M70 26 L76 6 L59 22 Z" fill="${dk}"/>`;
+  } else if(variant===1){ // antenna
+    top = `<line x1="50" y1="20" x2="50" y2="4" stroke="${dk}" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="4" r="5" fill="${dk}"/>`;
+  } else { // ears + spots
+    top = `<ellipse cx="28" cy="24" rx="9" ry="13" fill="${dk}"/><ellipse cx="72" cy="24" rx="9" ry="13" fill="${dk}"/>`;
+  }
+  return `<svg viewBox="0 0 100 100" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" role="img">
+    ${top}
+    <ellipse cx="38" cy="93" rx="10" ry="6" fill="${dk}"/>
+    <ellipse cx="62" cy="93" rx="10" ry="6" fill="${dk}"/>
+    <rect x="16" y="28" width="68" height="62" rx="28" fill="${color}"/>
+    <ellipse cx="38" cy="52" rx="12" ry="13" fill="#fff"/>
+    <ellipse cx="62" cy="52" rx="12" ry="13" fill="#fff"/>
+    <circle cx="42" cy="54" r="5.5" fill="#222"/>
+    <circle cx="66" cy="54" r="5.5" fill="#222"/>
+    <circle cx="44" cy="52" r="1.6" fill="#fff"/>
+    <circle cx="68" cy="52" r="1.6" fill="#fff"/>
+    <path d="M37 72 Q50 84 63 72" stroke="#222" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  </svg>`;
+}
+
+/* ---------- finger map for tutorial keyboard ---------- */
+const FINGER_INFO = {
+  lp:{name:'left pinky',  color:'#ff6b6b'},
+  lr:{name:'left ring',   color:'#ffa94d'},
+  lm:{name:'left middle', color:'#ffd43b'},
+  li:{name:'left index',  color:'#69db7c'},
+  ri:{name:'right index', color:'#38d9a9'},
+  rm:{name:'right middle',color:'#74c0fc'},
+  rr:{name:'right ring',  color:'#b197fc'},
+  rp:{name:'right pinky', color:'#f783ac'},
+  th:{name:'thumb',       color:'#ced4da'}
+};
+const FINGER = {
+  '1':'lp','q':'lp','a':'lp','z':'lp',
+  '2':'lr','w':'lr','s':'lr','x':'lr',
+  '3':'lm','e':'lm','d':'lm','c':'lm',
+  '4':'li','5':'li','r':'li','t':'li','f':'li','g':'li','v':'li','b':'li',
+  '6':'ri','7':'ri','y':'ri','u':'ri','h':'ri','j':'ri','n':'ri','m':'ri',
+  '8':'rm','i':'rm','k':'rm',',':'rm',
+  '9':'rr','o':'rr','l':'rr','.':'rr',
+  '0':'rp','p':'rp',';':'rp','/':'rp',"'":'rp',
+  ' ':'th'
+};
+function fingerOf(ch){
+  const k = ch.toLowerCase();
+  return FINGER[k] || 'th';
+}
+const KEY_ROWS = [
+  ['1','2','3','4','5','6','7','8','9','0'],
+  ['q','w','e','r','t','y','u','i','o','p'],
+  ['a','s','d','f','g','h','j','k','l'],
+  ['z','x','c','v','b','n','m'],
+  ['space']
+];
+
+/* ---------- word lists (tuned for ages 8–10) ---------- */
+const WORDS = {
+  easy: ['cat','dog','sun','run','fun','hat','big','red','box','fox','bug','cup','map','pig','hop','jam','leg','net','owl','pup','sit','web','zip','kid','log','mom','dad','toy','bee','car'],
+  medium: ['apple','happy','river','green','money','table','water','plant','music','light','party','brave','cloud','dream','candy','giant','jolly','lemon','mango','ocean','peach','quiet','robot','snake','tiger','zebra','school','friend','jungle','planet','rocket','summer','winter','dragon','garden','pizza'],
+  hard: ['elephant','butterfly','adventure','chocolate','dinosaur','mountain','treasure','computer','birthday','kangaroo','umbrella','crocodile','vegetable','telephone','wonderful','rainbow','question','favorite','jellyfish','Saturday','October','playground','strawberry','dangerous','important','beautiful']
+};
+
+/* difficulty settings: number of words to type, and opponents.
+   Opponent "secs" = seconds that opponent takes to reach the finish (lower = faster).
+   Easy is intentionally very beatable for a new typist. */
+const DIFF = {
+  easy:   { label:'Easy',   words:8,  showFingerHint:true,  opponents:[{secs:[75,95]}] },
+  medium: { label:'Medium', words:10, showFingerHint:false, opponents:[{secs:[48,62]},{secs:[55,70]}] },
+  hard:   { label:'Hard',   words:12, showFingerHint:false, opponents:[{secs:[33,42]},{secs:[40,52]},{secs:[46,60]}] }
+};
+
+/* ---------- tutorial lessons ---------- */
+const LESSONS = [
+  { title:'Home Row',
+    blurb:"Rest your left fingers on A S D F and your right fingers on J K L ;. Feel the little bumps on F and J — that's how you find home without looking!",
+    items:['f','j','f','j','d','k','d','k','s','l','s','l','a',';','a',';','jf','kd','ls','dad','ask','all','fall','glass'] },
+  { title:'Top Row',
+    blurb:"Reach UP to the top row, then bring your fingers back to home. Keep them resting on A S D F and J K L ; in between.",
+    items:['e','i','r','u','t','y','er','ui','the','tree','your','quiet','write','type'] },
+  { title:'Bottom Row',
+    blurb:"Reach DOWN to the bottom row. Curl your fingers and tap, then come back home.",
+    items:['c','v','b','n','m','cv','bn','can','van','man','cab','ban'] },
+  { title:'Word Practice',
+    blurb:"Put it all together! Type each word using the right fingers. Try not to look down.",
+    items:['cat','dog','fish','happy','sunny','green','friend','dragon','rocket','monster'] }
+];
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  screen:'menu',
+  soundOn:true,
+  audio:null,
+  playerName:'You',
+  playerColor: MONSTER_COLORS[0],
+  playerVariant:0,
+  // race
+  diffKey:'easy',
+  words:[], wordIndex:0, currentWord:'', typed:'',
+  totalChars:0, playerChars:0,
+  errors:0, keystrokes:0,
+  startTime:0, racing:false, finished:false,
+  racers:[], rafId:null, lastTs:0, finishOrder:[], countdownTimer:null, graceStart:undefined,
+  // tutorial
+  lessonIndex:0, tutItems:[], tutItemIndex:0, tutTyped:'', tutHits:0, tutMiss:0
+};
+
+/* ============================================================
+   SOUND (Web Audio API — no files, works offline)
+   ============================================================ */
+function audioCtx(){
+  if(!state.audio){
+    try{ state.audio = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e){ state.audio = null; }
+  }
+  if(state.audio && state.audio.state === 'suspended'){ state.audio.resume(); }
+  return state.audio;
+}
+function beep(freq, dur, type, vol){
+  if(!state.soundOn) return;
+  const ac = audioCtx(); if(!ac) return;
+  try{
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'square'; o.frequency.value = freq;
+    g.gain.value = vol || 0.06;
+    o.connect(g); g.connect(ac.destination);
+    const t = ac.currentTime;
+    g.gain.setValueAtTime(g.gain.value, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur);
+  }catch(e){}
+}
+const sfx = {
+  key(){ beep(420 + Math.random()*60, 0.05, 'square', 0.04); },
+  good(){ beep(660, 0.08, 'triangle', 0.07); setTimeout(()=>beep(880,0.1,'triangle',0.07),70); },
+  bad(){ beep(150, 0.12, 'sawtooth', 0.05); },
+  win(){ [523,659,784,1046].forEach((f,i)=> setTimeout(()=>beep(f,0.18,'triangle',0.08), i*120)); },
+  lose(){ [392,330,262].forEach((f,i)=> setTimeout(()=>beep(f,0.22,'sine',0.07), i*150)); },
+  count(){ beep(500,0.1,'sine',0.06); },
+  go(){ beep(900,0.25,'triangle',0.09); }
+};
+
+/* ============================================================
+   MENU
+   ============================================================ */
+function renderMenuMonster(){
+  $('menuMonster').innerHTML = monsterSVG(state.playerColor, state.playerVariant);
+}
+function rerollMonster(){
+  monsterCounter++;
+  state.playerColor = MONSTER_COLORS[monsterCounter % MONSTER_COLORS.length];
+  state.playerVariant = monsterCounter % 3;
+  renderMenuMonster();
+  sfx.key();
+}
+
+/* ============================================================
+   TUTORIAL
+   ============================================================ */
+function buildKeyboard(){
+  const kb = $('keyboard'); kb.innerHTML = '';
+  KEY_ROWS.forEach(row => {
+    const r = document.createElement('div'); r.className = 'krow';
+    row.forEach(k => {
+      const el = document.createElement('div');
+      const isSpace = (k === 'space');
+      const ch = isSpace ? ' ' : k;
+      const fin = fingerOf(ch);
+      el.className = 'key' + (isSpace ? ' space' : '') + ((k==='f'||k==='j') ? ' bump' : '');
+      el.style.background = FINGER_INFO[fin].color;
+      el.dataset.key = ch;
+      el.textContent = isSpace ? 'space' : k;
+      r.appendChild(el);
+    });
+    kb.appendChild(r);
+  });
+}
+function startLesson(idx){
+  state.lessonIndex = clamp(idx, 0, LESSONS.length-1);
+  const L = LESSONS[state.lessonIndex];
+  state.tutItems = L.items.slice();
+  state.tutItemIndex = 0; state.tutTyped = ''; state.tutHits = 0; state.tutMiss = 0;
+  $('tutTitle').textContent = L.title;
+  $('tutBlurb').textContent = L.blurb;
+  $('tutLessonPill').textContent = 'Lesson ' + (state.lessonIndex+1) + ' / ' + LESSONS.length;
+  $('tutDone').style.display = 'none';
+  $('keyboard').style.display = 'flex';
+  $('tutKbCaption').style.display = '';
+  $('tutWord').parentElement.style.display = 'block';
+  buildKeyboard();
+  renderTutItem();
+}
+function renderTutItem(){
+  const item = state.tutItems[state.tutItemIndex] || '';
+  const typed = state.tutTyped;
+  let html = '';
+  for(let i=0;i<item.length;i++){
+    const cls = i < typed.length ? 'done' : (i === typed.length ? 'cur' : 'todo');
+    const c = item[i] === ' ' ? '␣' : item[i];
+    html += `<span class="${cls}">${escapeHtml(c)}</span>`;
+  }
+  $('tutWord').innerHTML = html;
+  // progress across the whole lesson
+  const pct = (state.tutItemIndex / state.tutItems.length) * 100;
+  $('tutProgress').style.width = pct + '%';
+  // finger hint + keyboard highlight for next char
+  highlightKey(null);
+  const next = item[typed.length];
+  if(next !== undefined){
+    const fin = fingerOf(next);
+    const info = FINGER_INFO[fin];
+    $('tutHint').innerHTML = `<span class="dot" style="background:${info.color}"></span>Use your <b>${info.name}</b>`;
+    highlightKey(next);
+  } else {
+    $('tutHint').textContent = '';
+  }
+}
+function highlightKey(ch){
+  document.querySelectorAll('#keyboard .key').forEach(k => k.classList.remove('target'));
+  if(ch == null) return;
+  const want = ch.toLowerCase();
+  document.querySelectorAll('#keyboard .key').forEach(k => {
+    if(k.dataset.key === want) k.classList.add('target');
+  });
+}
+function tutorialKey(e){
+  const item = state.tutItems[state.tutItemIndex];
+  if(item == null) return;
+  if(e.key.length !== 1) return;      // ignore Shift, Enter, arrows, etc.
+  e.preventDefault();
+  const expected = item[state.tutTyped.length];
+  if(expected === undefined) return;
+  const match = (e.key.toLowerCase() === expected.toLowerCase());
+  if(match){
+    state.tutTyped += expected;
+    state.tutHits++;
+    sfx.key();
+    if(state.tutTyped.length >= item.length){
+      // item complete
+      sfx.good();
+      state.tutItemIndex++;
+      state.tutTyped = '';
+      if(state.tutItemIndex >= state.tutItems.length){ finishLesson(); return; }
+    }
+    renderTutItem();
+  } else {
+    state.tutMiss++;
+    sfx.bad();
+    const w = $('tutWord'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake');
+  }
+}
+function finishLesson(){
+  $('tutProgress').style.width = '100%';
+  highlightKey(null);
+  $('keyboard').style.display = 'none';
+  $('tutKbCaption').style.display = 'none';
+  $('tutWord').parentElement.style.display = 'none';
+  const total = state.tutHits + state.tutMiss;
+  const acc = total ? Math.round(state.tutHits/total*100) : 100;
+  let stars = acc >= 97 ? '⭐⭐⭐' : acc >= 90 ? '⭐⭐' : '⭐';
+  $('tutStars').textContent = stars;
+  $('tutScore').textContent = `Accuracy: ${acc}%  —  ${state.tutHits} keys typed`;
+  $('tutNext').style.display = (state.lessonIndex < LESSONS.length-1) ? '' : 'none';
+  $('tutDone').style.display = 'block';
+  sfx.win();
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ============================================================
+   RACE
+   ============================================================ */
+function pick(list, n){
+  // pick n words (with shuffle, allow repeats only if list too short)
+  const pool = list.slice();
+  const out = [];
+  for(let i=0;i<n;i++){
+    if(pool.length === 0) pool.push(...list);
+    const idx = Math.floor(Math.random()*pool.length);
+    out.push(pool.splice(idx,1)[0]);
+  }
+  return out;
+}
+function startRace(diffKey){
+  // cancel anything still in flight so a quick re-start can't spawn a 2nd race loop
+  if(state.countdownTimer){ clearTimeout(state.countdownTimer); state.countdownTimer = null; }
+  if(state.rafId){ cancelAnimationFrame(state.rafId); state.rafId = null; }
+  state.graceStart = undefined;
+  state.diffKey = diffKey;
+  const D = DIFF[diffKey];
+  state.words = pick(WORDS[diffKey], D.words);
+  state.totalChars = state.words.reduce((a,w)=>a+w.length,0);
+  state.wordIndex = 0; state.typed = ''; state.currentWord = state.words[0];
+  state.playerChars = 0; state.errors = 0; state.keystrokes = 0;
+  state.finished = false; state.racing = false; state.finishOrder = [];
+
+  // build racers: player (index 0) + opponents
+  state.racers = [{ player:true, name:(state.playerName||'You'), color:state.playerColor,
+                    variant:state.playerVariant, pos:0, finished:false }];
+  D.opponents.forEach((op, i) => {
+    const secs = op.secs[0] + Math.random()*(op.secs[1]-op.secs[0]);
+    monsterCounter++;
+    state.racers.push({
+      player:false, name:OPP_NAMES[(i+monsterCounter)%OPP_NAMES.length],
+      color: MONSTER_COLORS[(i+3+monsterCounter)%MONSTER_COLORS.length],
+      variant:(i+1)%3, pos:0, finished:false, secs:secs
+    });
+  });
+
+  $('raceDiff').textContent = D.label;
+  $('soundBtn').textContent = state.soundOn ? '🔊' : '🔇';
+  buildLanes();
+  renderWord();
+  updateRaceProgress();
+  showScreen('race');
+  countdownThenGo();
+}
+const OPP_NAMES = ['Zip','Blip','Gus','Fang','Pip','Mo','Tux','Bingo','Nessa','Rex'];
+
+function buildLanes(){
+  const lanes = $('lanes'); lanes.innerHTML = '';
+  state.racers.forEach((r, i) => {
+    const lane = document.createElement('div'); lane.className = 'lane';
+    const m = document.createElement('div'); m.className = 'monster'; m.id = 'mon'+i;
+    m.innerHTML = `<div class="label">${escapeHtml(r.player ? '⭐ '+r.name : r.name)}</div>` + monsterSVG(r.color, r.variant);
+    lane.appendChild(m);
+    lanes.appendChild(lane);
+  });
+  positionMonsters();
+}
+function positionMonsters(){
+  state.racers.forEach((r,i)=>{
+    const m = $('mon'+i); if(!m) return;
+    const left = 1.5 + r.pos * 86;   // 1.5% .. 87.5%
+    m.style.left = left + '%';
+  });
+}
+function renderWord(){
+  const w = state.currentWord, typed = state.typed;
+  let html = '';
+  for(let i=0;i<w.length;i++){
+    const cls = i < typed.length ? 'done' : (i === typed.length ? 'cur' : 'todo');
+    html += `<span class="${cls}">${escapeHtml(w[i])}</span>`;
+  }
+  $('word').innerHTML = html;
+  // optional finger hint (easy mode)
+  if(DIFF[state.diffKey].showFingerHint && typed.length < w.length){
+    const fin = fingerOf(w[typed.length]);
+    const info = FINGER_INFO[fin];
+    $('raceHint').innerHTML = `<span class="dot" style="background:${info.color}"></span>Next: <b>${info.name}</b>`;
+  } else {
+    $('raceHint').textContent = '';
+  }
+}
+function updateRaceProgress(){
+  $('raceWords').textContent = 'Word ' + Math.min(state.wordIndex+1, state.words.length) + ' / ' + state.words.length;
+  const pct = Math.round((state.playerChars/state.totalChars)*100);
+  $('raceProgressTxt').textContent = pct + '% to the finish line';
+}
+function countdownThenGo(){
+  const ov = $('countdown'); ov.style.display = 'flex';
+  const seq = ['3','2','1','GO!'];
+  let i = 0;
+  $('countNum').textContent = seq[0]; sfx.count();
+  const tick = () => {
+    i++;
+    if(i < seq.length){
+      $('countNum').textContent = seq[i];
+      const el = $('countNum'); el.style.animation = 'none'; void el.offsetWidth; el.style.animation = 'pop .5s';
+      if(seq[i]==='GO!') sfx.go(); else sfx.count();
+      state.countdownTimer = setTimeout(tick, 700);
+    } else {
+      state.countdownTimer = null;
+      ov.style.display = 'none';
+      beginRacing();
+    }
+  };
+  state.countdownTimer = setTimeout(tick, 700);
+}
+function beginRacing(){
+  if(state.screen !== 'race') return;   // a late countdown must never re-arm a race we left
+  state.racing = true;
+  state.startTime = performance.now();
+  state.lastTs = state.startTime;
+  state.racers.forEach((r,i)=>{ const m=$('mon'+i); if(m) m.classList.add('run'); });
+  state.rafId = requestAnimationFrame(raceLoop);
+}
+function raceLoop(ts){
+  if(state.screen !== 'race'){ return; }   // safety: stop if we left the screen
+  const dt = Math.min((ts - state.lastTs)/1000, 0.1);
+  state.lastTs = ts;
+  if(state.racing){
+    // move opponents
+    state.racers.forEach((r)=>{
+      if(r.player || r.finished) return;
+      r.pos = clamp(r.pos + dt / r.secs, 0, 1);
+      if(r.pos >= 1 && !r.finished){
+        r.finished = true; state.finishOrder.push(r);
+      }
+    });
+    positionMonsters();
+    // did an opponent cross before the player?
+    const oppWon = state.racers.some(r => !r.player && r.finished);
+    if(oppWon && !state.finished){
+      // photo-finish grace: if the player is almost there, give them a moment to finish
+      const prog = state.playerChars / state.totalChars;
+      if(prog >= 0.9){
+        if(state.graceStart === undefined) state.graceStart = ts;
+        if(ts - state.graceStart < 2000){
+          state.rafId = requestAnimationFrame(raceLoop);
+          return;
+        }
+      }
+      endRace(false);
+      return;
+    }
+  }
+  state.rafId = requestAnimationFrame(raceLoop);
+}
+function raceKey(e){
+  if(!state.racing || state.finished) return;
+  if(e.key.length !== 1) return;        // ignore non-character keys
+  e.preventDefault();
+  const expected = state.currentWord[state.typed.length];
+  if(expected === undefined) return;
+  state.keystrokes++;
+  // case-insensitive for letters; exact for everything else
+  const isLetter = /[a-z]/i.test(expected);
+  const match = isLetter ? (e.key.toLowerCase() === expected.toLowerCase()) : (e.key === expected);
+  if(match){
+    state.typed += expected;
+    state.playerChars++;
+    sfx.key();
+    // advance player position smoothly per character
+    const me = state.racers[0];
+    me.pos = clamp(state.playerChars/state.totalChars, 0, 1);
+    positionMonsters();
+    renderWord();
+    if(state.typed.length >= state.currentWord.length){
+      // word done
+      sfx.good();
+      state.wordIndex++;
+      state.typed = '';
+      if(state.wordIndex >= state.words.length){
+        me.pos = 1; positionMonsters();
+        me.finished = true; state.finishOrder.unshift(me);
+        endRace(true);
+        return;
+      } else {
+        state.currentWord = state.words[state.wordIndex];
+        renderWord();
+        updateRaceProgress();
+      }
+    }
+  } else {
+    state.errors++;
+    sfx.bad();
+    const w = $('word'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake');
+  }
+}
+function endRace(playerWon){
+  state.finished = true; state.racing = false;
+  if(state.countdownTimer){ clearTimeout(state.countdownTimer); state.countdownTimer = null; }
+  if(state.rafId){ cancelAnimationFrame(state.rafId); state.rafId = null; }
+  const elapsed = (performance.now() - state.startTime)/1000;
+  // celebrate / flop animation
+  state.racers.forEach((r,i)=>{
+    const m = $('mon'+i); if(!m) return;
+    m.classList.remove('run');
+    if(r.player && playerWon) m.classList.add('cheer');
+  });
+  showResults(playerWon, elapsed);
+}
+
+/* ============================================================
+   RESULTS + scores
+   ============================================================ */
+function bestKey(d){ return 'mtr_best_' + d; }
+function getBest(d){
+  try{ const v = localStorage.getItem(bestKey(d)); return v ? parseInt(v,10) : 0; }catch(e){ return 0; }
+}
+function setBest(d, wpm){
+  try{ localStorage.setItem(bestKey(d), String(wpm)); }catch(e){}
+}
+function showResults(playerWon, elapsed){
+  const minutes = Math.max(elapsed/60, 0.001);
+  const wpm = Math.max(0, Math.round((state.playerChars/5)/minutes));
+  const acc = state.keystrokes ? Math.round((state.keystrokes - state.errors)/state.keystrokes*100) : 100;
+
+  // placement: 1st if the player won, otherwise behind everyone who already crossed
+  const ahead = state.finishOrder.filter(r => !r.player).length;
+  const place = playerWon ? 1 : ahead + 1;
+  const placeTxt = ['1st','2nd','3rd','4th','5th'][place-1] || (place+'th');
+
+  if(playerWon){
+    $('resEmoji').textContent = '🏆';
+    $('resTitle').textContent = 'You WIN! 🎉';
+    $('resSub').textContent = randPraise();
+  } else {
+    $('resEmoji').textContent = '🎈';
+    $('resTitle').textContent = 'So close!';
+    $('resSub').textContent = randEncourage();
+  }
+  $('resPlace').textContent = placeTxt;
+  $('resWpm').textContent = playerWon ? wpm : '💪';   // don't rub a cold number in on a loss
+  $('resAcc').textContent = acc + '%';
+  $('resTime').textContent = elapsed.toFixed(1) + 's';
+
+  const prev = getBest(state.diffKey);
+  if(wpm > prev){
+    setBest(state.diffKey, wpm);
+    $('resBest').textContent = '🌟 New best speed for ' + DIFF[state.diffKey].label + '!';
+  } else if(prev > 0){
+    $('resBest').textContent = 'Your best ' + DIFF[state.diffKey].label + ' speed: ' + prev + ' WPM';
+  } else {
+    $('resBest').textContent = '';
+  }
+
+  if(playerWon) sfx.win(); else sfx.lose();
+  showScreen('results');
+}
+const PRAISE = ['Awesome typing! 🌈','You are super fast! ⚡','Your monster is the champion! 👑','Wow, what a racer! 🚀','Great fingers! 🖐️✨'];
+const ENCOURAGE = ['You almost had it — try again! 💪','Getting faster every time! 🌱','Practice makes perfect! ⭐','That was a close one! 🏁','You can beat them next time! 🔥'];
+function randPraise(){ return PRAISE[Math.floor(Math.random()*PRAISE.length)]; }
+function randEncourage(){ return ENCOURAGE[Math.floor(Math.random()*ENCOURAGE.length)]; }
+
+/* ============================================================
+   GLOBAL INPUT + WIRING
+   ============================================================ */
+function stopRaceLoop(){
+  state.racing = false; state.finished = true;
+  if(state.countdownTimer){ clearTimeout(state.countdownTimer); state.countdownTimer = null; }
+  if(state.rafId){ cancelAnimationFrame(state.rafId); state.rafId = null; }
+}
+document.addEventListener('keydown', (e) => {
+  if(state.screen === 'race'){ raceKey(e); }
+  else if(state.screen === 'tutorial'){
+    if($('tutDone').style.display === 'block'){
+      if(e.key === 'Enter'){ e.preventDefault(); $('tutNext').style.display !== 'none' ? $('tutNext').click() : $('tutMenu').click(); }
+      return;
+    }
+    tutorialKey(e);
+  }
+  else if(state.screen === 'results'){
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('againBtn').click(); }
+  }
+});
+
+function wire(){
+  // menu
+  $('nameInput').addEventListener('input', e => { state.playerName = e.target.value.trim() || 'You'; });
+  $('rerollBtn').addEventListener('click', rerollMonster);
+  document.querySelectorAll('#diffGrid .diff-card').forEach(card => {
+    card.addEventListener('click', () => {
+      audioCtx(); // unlock sound on a user gesture
+      const mode = card.dataset.mode;
+      state.playerName = ($('nameInput').value.trim() || 'You');
+      if(mode === 'tutorial'){ showScreen('tutorial'); startLesson(0); }
+      else { startRace(mode); }
+    });
+  });
+  // tutorial buttons
+  $('tutQuit').addEventListener('click', () => { highlightKey(null); showScreen('menu'); });
+  $('tutMenu').addEventListener('click', () => showScreen('menu'));
+  $('tutReplay').addEventListener('click', () => startLesson(state.lessonIndex));
+  $('tutNext').addEventListener('click', () => startLesson(state.lessonIndex+1));
+  // race buttons
+  $('raceQuit').addEventListener('click', () => { stopRaceLoop(); showScreen('menu'); });
+  $('soundBtn').addEventListener('click', () => {
+    state.soundOn = !state.soundOn;
+    $('soundBtn').textContent = state.soundOn ? '🔊' : '🔇';
+    if(state.soundOn){ audioCtx(); sfx.key(); }
+  });
+  // results buttons
+  $('againBtn').addEventListener('click', () => startRace(state.diffKey));
+  $('changeBtn').addEventListener('click', () => showScreen('menu'));
+  $('menuBtn').addEventListener('click', () => showScreen('menu'));
+
+  renderMenuMonster();
+}
+wire();
+</script>
+</body>
+</html>
