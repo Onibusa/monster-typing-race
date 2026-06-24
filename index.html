@@ -26,6 +26,7 @@
     overflow-x:hidden;
   }
   .app{
+    position:relative;
     width:min(960px,100%);
     background:rgba(255,255,255,0.08);
     border-radius:24px;
@@ -159,6 +160,10 @@
   .stat .v{ font-size:30px; font-weight:bold; color:#c2410c; }
   .stat .k{ font-size:13px; color:var(--muted); }
   .toggle{ background:none; border:none; cursor:pointer; font-size:22px; }
+  .toggle.off{ opacity:.35; }
+  .audio-controls{ position:absolute; top:12px; right:16px; display:flex; gap:2px; z-index:20; }
+  .audio-controls .toggle{ font-size:20px; line-height:1; padding:4px; }
+  .audio-controls .toggle:focus-visible{ outline:3px solid #ffd166; outline-offset:2px; border-radius:8px; }
   .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
   .footer-note{ text-align:center; color:#fff7e0; font-size:14px; margin-top:12px; }
   .kb-caption{ text-align:center; color:var(--muted); font-size:13.5px; margin:0 0 6px; }
@@ -166,6 +171,11 @@
 </head>
 <body>
 <div class="app">
+
+  <div class="audio-controls">
+    <button class="toggle" id="musicBtn" title="Music on/off" aria-label="Toggle background music">🎵</button>
+    <button class="toggle" id="soundBtn" title="Sound effects on/off" aria-label="Toggle sound effects">🔊</button>
+  </div>
 
   <!-- ================= MENU ================= -->
   <section id="menu" class="screen active">
@@ -243,7 +253,6 @@
       <span class="pill" id="raceDiff">Easy</span>
       <span class="pill" id="raceWords">Word 1 / 10</span>
       <div>
-        <button class="toggle" id="soundBtn" title="Sound on/off" aria-label="Toggle sound">🔊</button>
         <button class="btn ghost" id="raceQuit">⟵ Quit</button>
       </div>
     </div>
@@ -413,6 +422,7 @@ const LESSONS = [
 const state = {
   screen:'menu',
   soundOn:true,
+  musicOn:true,
   audio:null,
   playerName:'You',
   playerColor: MONSTER_COLORS[0],
@@ -456,11 +466,66 @@ function beep(freq, dur, type, vol){
 const sfx = {
   key(){ beep(420 + Math.random()*60, 0.05, 'square', 0.04); },
   good(){ beep(660, 0.08, 'triangle', 0.07); setTimeout(()=>beep(880,0.1,'triangle',0.07),70); },
-  bad(){ beep(150, 0.12, 'sawtooth', 0.05); },
+  bad(){
+    // clear, friendly "whoops" — a quick descending tone, loud enough to notice
+    if(!state.soundOn) return;
+    const ac = audioCtx(); if(!ac) return;
+    try{
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'square';
+      const t = ac.currentTime;
+      o.frequency.setValueAtTime(300, t);
+      o.frequency.exponentialRampToValueAtTime(140, t + 0.16);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t); o.stop(t + 0.22);
+    }catch(e){}
+  },
   win(){ [523,659,784,1046].forEach((f,i)=> setTimeout(()=>beep(f,0.18,'triangle',0.08), i*120)); },
   lose(){ [392,330,262].forEach((f,i)=> setTimeout(()=>beep(f,0.22,'sine',0.07), i*150)); },
   count(){ beep(500,0.1,'sine',0.06); },
   go(){ beep(900,0.25,'triangle',0.09); }
+};
+
+/* ---------- background music: an original looping chiptune, fully generated (no files) ---------- */
+const music = {
+  playing:false, timer:null, step:0, nextTime:0, tempo:112,
+  // C-major pentatonic melody over a simple I–vi–IV–V bass — pleasant on loop, 16 eighth-notes
+  mel:[783.99,659.25,783.99,880.00, 659.25,null,523.25,587.33, 659.25,783.99,880.00,783.99, 659.25,587.33,523.25,null],
+  bass:[130.81,110.00,87.31,98.00],   // C3, A2, F2, G2 (one per beat)
+  start(){
+    const ac = audioCtx(); if(!ac || this.playing) return;
+    this.playing = true; this.step = 0; this.nextTime = ac.currentTime + 0.12;
+    this._tick();
+  },
+  stop(){ this.playing = false; if(this.timer){ clearTimeout(this.timer); this.timer = null; } },
+  _tick(){
+    const ac = state.audio; if(!ac || !this.playing) return;
+    const stepDur = 60 / this.tempo / 2;   // eighth-note length in seconds
+    while(this.nextTime < ac.currentTime + 0.25){   // schedule a little ahead for steady timing
+      const s = this.step;
+      const mf = this.mel[s];
+      if(mf) this._note(mf, this.nextTime, stepDur*0.9, 'triangle', 0.045);
+      if(s % 4 === 0){ const bf = this.bass[s/4]; if(bf) this._note(bf, this.nextTime, stepDur*3.6, 'sine', 0.05); }
+      this.nextTime += stepDur;
+      this.step = (s + 1) % 16;
+    }
+    this.timer = setTimeout(() => this._tick(), 45);
+  },
+  _note(freq, t, dur, type, vol){
+    const ac = state.audio; if(!ac) return;
+    try{
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.value = freq;
+      o.connect(g); g.connect(ac.destination);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.start(t); o.stop(t + dur + 0.03);
+    }catch(e){}
+  }
 };
 
 /* ============================================================
@@ -876,6 +941,7 @@ function wire(){
   document.querySelectorAll('#diffGrid .diff-card').forEach(card => {
     card.addEventListener('click', () => {
       audioCtx(); // unlock sound on a user gesture
+      if(state.musicOn) music.start();
       const mode = card.dataset.mode;
       state.playerName = ($('nameInput').value.trim() || 'You');
       if(mode === 'tutorial'){ showScreen('tutorial'); startLesson(0); }
@@ -893,6 +959,11 @@ function wire(){
     state.soundOn = !state.soundOn;
     $('soundBtn').textContent = state.soundOn ? '🔊' : '🔇';
     if(state.soundOn){ audioCtx(); sfx.key(); }
+  });
+  $('musicBtn').addEventListener('click', () => {
+    state.musicOn = !state.musicOn;
+    $('musicBtn').classList.toggle('off', !state.musicOn);
+    if(state.musicOn){ audioCtx(); music.start(); } else { music.stop(); }
   });
   // results buttons
   $('againBtn').addEventListener('click', () => startRace(state.diffKey));
