@@ -88,6 +88,7 @@
   .d-easy{ background:linear-gradient(135deg,#138040,#18804a); }
   .d-medium{ background:linear-gradient(135deg,#b4480f,#bf5230); }
   .d-hard{ background:linear-gradient(135deg,#c61f54,#b02f72); }
+  .d-sentences{ background:linear-gradient(135deg,#2b5fd0,#1e3f9e); }
   .diff-card .ic{ font-size:26px; }
 
   /* Race */
@@ -120,7 +121,8 @@
   /* Word display */
   .wordstage{ text-align:center; margin:16px 0 6px; }
   .word{ font-size:clamp(34px,7vw,64px); font-weight:bold; letter-spacing:3px; }
-  .word .done{ color:var(--good); }
+  .word.sentence{ font-size:clamp(22px,4.2vw,34px); letter-spacing:1px; line-height:1.55; overflow-wrap:break-word; }
+  .word .done{ color:#188048; }
   .word .cur{ color:var(--ink); background:var(--accent2); border-radius:8px; padding:0 4px; box-shadow:0 0 0 3px var(--accent2); }
   .word .todo{ color:#5b6275; }
   .word.shake{ animation:shake .25s; }
@@ -208,6 +210,10 @@
           <div class="ic">🔥</div><h3>Hard</h3>
           <p>Long words, capitals, and three speedy monsters!</p>
         </button>
+        <button class="diff-card d-sentences" data-mode="sentences">
+          <div class="ic">📖</div><h3>Sentences</h3>
+          <p>Type whole sentences with capital letters and periods. Great reading practice!</p>
+        </button>
       </div>
     </div>
     <p class="footer-note">Tip: rest your fingers on the home row — F and J have little bumps to find without looking.</p>
@@ -281,7 +287,7 @@
         <div class="stat"><div class="v" id="resAcc">100%</div><div class="k">Accuracy</div></div>
         <div class="stat"><div class="v" id="resTime">0s</div><div class="k">Time</div></div>
       </div>
-      <p id="resBest" style="color:var(--good); font-weight:bold; min-height:20px;"></p>
+      <p id="resBest" style="color:#188048; font-weight:bold; min-height:20px;"></p>
       <div class="row">
         <button class="btn green big" id="againBtn">↻ Play again</button>
         <button class="btn alt" id="changeBtn">Change level</button>
@@ -388,7 +394,26 @@ const KEY_ROWS = [
 const WORDS = {
   easy: ['cat','dog','sun','run','fun','hat','big','red','box','fox','bug','cup','map','pig','hop','jam','leg','net','owl','pup','sit','web','zip','kid','log','mom','dad','toy','bee','car'],
   medium: ['apple','happy','river','green','money','table','water','plant','music','light','party','brave','cloud','dream','candy','giant','jolly','lemon','mango','ocean','peach','quiet','robot','snake','tiger','zebra','school','friend','jungle','planet','rocket','summer','winter','dragon','garden','pizza'],
-  hard: ['elephant','butterfly','adventure','chocolate','dinosaur','mountain','treasure','computer','birthday','kangaroo','umbrella','crocodile','vegetable','telephone','wonderful','rainbow','question','favorite','jellyfish','Saturday','October','playground','strawberry','dangerous','important','beautiful']
+  hard: ['elephant','butterfly','adventure','chocolate','dinosaur','mountain','treasure','computer','birthday','kangaroo','umbrella','crocodile','vegetable','telephone','wonderful','rainbow','question','favorite','jellyfish','Saturday','October','playground','strawberry','dangerous','important','beautiful'],
+  // Full sentences: capitals (typed leniently) plus spaces and simple punctuation that are all single keys (. and ,)
+  sentences: [
+    'The cat sat on the soft warm mat.',
+    'My dog likes to run in the park.',
+    'We had pizza and cake at the party.',
+    'A big green dragon flew over the hills.',
+    'I ride my bike all the way to school.',
+    'She found a shiny rock by the river.',
+    'Frogs and fish live in the cool pond.',
+    'Let us build a fort with old blankets.',
+    'The rocket zoomed up into outer space.',
+    'Birds sing happy songs in the morning.',
+    'We saw a bright rainbow after the rain.',
+    'My favorite snack is apples and cheese.',
+    'The little robot beeped and rolled away.',
+    'Stars twinkle high above the tall trees.',
+    'We packed apples, juice, and a snack.',
+    'A turtle and a snail had a slow race.'
+  ]
 };
 
 /* difficulty settings: number of words to type, and opponents.
@@ -397,7 +422,8 @@ const WORDS = {
 const DIFF = {
   easy:   { label:'Easy',   words:8,  showFingerHint:true,  opponents:[{secs:[75,95]}] },
   medium: { label:'Medium', words:10, showFingerHint:false, opponents:[{secs:[48,62]},{secs:[55,70]}] },
-  hard:   { label:'Hard',   words:12, showFingerHint:false, opponents:[{secs:[33,42]},{secs:[40,52]},{secs:[46,60]}] }
+  hard:   { label:'Hard',   words:12, showFingerHint:false, opponents:[{secs:[33,42]},{secs:[40,52]},{secs:[46,60]}] },
+  sentences: { label:'Sentences', unit:'Sentence', words:2, showFingerHint:false, opponents:[{secs:[155,195]},{secs:[180,225]}] }
 };
 
 /* ---------- tutorial lessons ---------- */
@@ -725,10 +751,12 @@ function positionMonsters(){
 }
 function renderWord(){
   const w = state.currentWord, typed = state.typed;
+  $('word').classList.toggle('sentence', state.diffKey === 'sentences');
   let html = '';
   for(let i=0;i<w.length;i++){
     const cls = i < typed.length ? 'done' : (i === typed.length ? 'cur' : 'todo');
-    html += `<span class="${cls}">${escapeHtml(w[i])}</span>`;
+    const c = w[i] === ' ' ? '␣' : w[i];   // show the space bar as a visible glyph
+    html += `<span class="${cls}">${escapeHtml(c)}</span>`;
   }
   $('word').innerHTML = html;
   // optional finger hint (easy mode)
@@ -741,7 +769,7 @@ function renderWord(){
   }
 }
 function updateRaceProgress(){
-  $('raceWords').textContent = 'Word ' + Math.min(state.wordIndex+1, state.words.length) + ' / ' + state.words.length;
+  $('raceWords').textContent = (DIFF[state.diffKey].unit || 'Word') + ' ' + Math.min(state.wordIndex+1, state.words.length) + ' / ' + state.words.length;
   const pct = Math.round((state.playerChars/state.totalChars)*100);
   $('raceProgressTxt').textContent = pct + '% to the finish line';
 }
@@ -824,6 +852,7 @@ function raceKey(e){
     me.pos = clamp(state.playerChars/state.totalChars, 0, 1);
     positionMonsters();
     renderWord();
+    $('raceProgressTxt').textContent = Math.round((state.playerChars/state.totalChars)*100) + '% to the finish line';
     if(state.typed.length >= state.currentWord.length){
       // word done
       sfx.good();
